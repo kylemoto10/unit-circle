@@ -54,10 +54,10 @@
 <div class="wrap">
   <div class="noprint">
     <h1>Unit Circle Quiz Generator</h1>
-    <p class="sub">Set the mix, generate a quiz, then print or save as PDF. Page 1 is the quiz; page 2 is the answer key.</p>
+    <p class="sub">Set the mix, generate a quiz, then print or save as PDF. The quiz comes first (up to 30 questions per page), followed by the answer key.</p>
     <div class="controls">
       <div class="grid">
-        <div><label for="nq">Number of questions</label><input id="nq" type="number" min="2" max="40" value="20"></div>
+        <div><label for="nq">Number of questions</label><input id="nq" type="number" min="2" max="150" value="20"></div>
         <div><label for="rad">% in radians</label><input id="rad" type="number" min="0" max="100" value="70">
           <div class="hint"><span id="degShow">30</span>% will be in degrees</div></div>
         <div><label for="co">% coterminal angles</label><input id="co" type="number" min="0" max="100" value="40">
@@ -167,20 +167,25 @@ function generate(rng, n, radPct, coPct, lo, hi) {
 }
 
 // ---------- rendering ----------
+const PER_PAGE = 30;
 function render(qs) {
-  const rows = Math.ceil(qs.length / 2);
+  // Same row count and font size on every page, based on the fullest page.
+  const rows = Math.ceil(Math.min(qs.length, PER_PAGE) / 2);
   const fs = rows > 12 ? Math.max(11, Math.round(17 * 12 / rows)) : 17;
-  const page = (title, answers) => `
+  const chunks = [];
+  for (let s = 0; s < qs.length; s += PER_PAGE) chunks.push({ start: s, items: qs.slice(s, s + PER_PAGE) });
+  const pages = (title, answers) => chunks.map((c, p) => page(p === 0 ? title : (title ? title + " (continued)" : ""), answers, c)).join("");
+  const page = (title, answers, c) => `
     <section class="page" style="--rows:${rows};--fs:${fs}px">
       ${title ? `<h2>${title}</h2>` : ""}
-      <div class="qgrid">${qs.map((q, i) => `
-        <div class="q"><span class="n">${i + 1}.</span>
+      <div class="qgrid">${c.items.map((q, j) => `
+        <div class="q"><span class="n">${c.start + j + 1}.</span>
           <span class="expr">${q.f}(${fmtAngle(q.deg, q.rad)})&nbsp;=</span>
           ${answers ? `<span class="ans">${fmtValue(trig(q.f, q.deg))}</span>` : ""}
         </div>`).join("")}
       </div>
     </section>`;
-  document.getElementById("sheets").innerHTML = page("", false) + page("Answer Key", true);
+  document.getElementById("sheets").innerHTML = pages("", false) + pages("Answer Key", true);
 }
 
 // ---------- UI ----------
@@ -193,7 +198,7 @@ function syncHints() {
 function run() {
   $("err").textContent = "";
   try {
-    const n = clamp(Math.round(+$("nq").value) || 20, 2, 40);
+    const n = clamp(Math.round(+$("nq").value) || 20, 2, 150);
     const radPct = clamp(+$("rad").value, 0, 100), coPct = clamp(+$("co").value, 0, 100);
     const lo = Math.round(+$("lo").value), hi = Math.round(+$("hi").value);
     if (!(lo < hi)) throw new Error("Lowest angle must be less than highest angle.");
