@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit Circle Quiz Generator</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1a1d23; --muted:#5b6270; --line:#d8dce3; --accent:#2457d6; --accent-ink:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1d2128; --ink:#e8eaee; --muted:#9aa2b1; --line:#323945; --accent:#6c93ff; --accent-ink:#0b1020; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.4 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .controls { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:12px 16px; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin-bottom:4px; }
+  input[type=number] { width:100%; padding:8px 10px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  .hint { font-size:.8rem; color:var(--muted); margin-top:3px; }
+  details { margin-top:12px; }
+  summary { cursor:pointer; color:var(--muted); font-size:.9rem; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+  button { padding:10px 18px; font-size:1rem; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  .err { color:#c0392b; font-size:.9rem; margin-top:8px; min-height:1em; }
+
+  /* The printable sheets: always black on white */
+  .page { background:#fff; color:#000; border:1px solid var(--line); border-radius:6px; padding:0.5in 0.55in;
+          margin-bottom:20px; height:10in; display:flex; flex-direction:column; }
+  .page h2 { margin:0 0 10px; font-size:1.2rem; }
+  .qgrid { flex:1; display:grid; grid-auto-flow:column; grid-template-columns:1fr 1fr; column-gap:0.4in;
+           grid-template-rows:repeat(var(--rows,10), 1fr); }
+  .q { display:flex; align-items:flex-start; padding-top:0.18in; font-size:var(--fs,17px); white-space:nowrap; }
+  .q .n { font-weight:700; width:2em; flex:none; }
+  .q .expr { display:inline-flex; align-items:center; }
+  .q .line { display:inline-block; flex:1; min-width:0.6in; border-bottom:1px solid #000; margin-left:8px; height:1.1em; align-self:flex-end; }
+  .q .ans { font-weight:700; margin-left:8px; display:inline-flex; align-items:center; }
+  .frac { display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; margin:0 2px; line-height:1.1; }
+  .frac > span:first-child { border-bottom:1.5px solid currentColor; padding:0 3px 1px; }
+  .frac > span:last-child { padding:1px 3px 0; }
+
+  @page { size: letter; margin: 0; }
+  @media print {
+    body { background:#fff; }
+    .noprint { display:none !important; }
+    .wrap { max-width:none; padding:0; }
+    .page { border:none; border-radius:0; margin:0; height:11in; page-break-after:always; break-after:page; padding:0.6in 0.7in; }
+    .page:last-child { page-break-after:auto; break-after:auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="noprint">
+    <h1>Unit Circle Quiz Generator</h1>
+    <p class="sub">Set the mix, generate a quiz, then print or save as PDF. Page 1 is the quiz; page 2 is the answer key.</p>
+    <div class="controls">
+      <div class="grid">
+        <div><label for="nq">Number of questions</label><input id="nq" type="number" min="2" max="40" value="20"></div>
+        <div><label for="rad">% in radians</label><input id="rad" type="number" min="0" max="100" value="70">
+          <div class="hint"><span id="degShow">30</span>% will be in degrees</div></div>
+        <div><label for="co">% coterminal angles</label><input id="co" type="number" min="0" max="100" value="40">
+          <div class="hint"><span id="baseShow">60</span>% will be between 0° and 360°</div></div>
+      </div>
+      <details>
+        <summary>More options</summary>
+        <div class="grid" style="margin-top:10px">
+          <div><label for="lo">Lowest angle (degrees)</label><input id="lo" type="number" step="30" value="-360"></div>
+          <div><label for="hi">Highest angle (degrees)</label><input id="hi" type="number" step="30" value="1080"></div>
+          <div><label for="seed">Seed (optional)</label><input id="seed" type="number" placeholder="random"><div class="hint">Same seed = same quiz</div></div>
+        </div>
+      </details>
+      <div class="err" id="err" role="alert"></div>
+      <div class="btns">
+        <button class="primary" id="gen">Generate new quiz</button>
+        <button id="print">Print / Save as PDF</button>
+      </div>
+    </div>
+  </div>
+  <div id="sheets"></div>
+</div>
+
+<script>
+"use strict";
+const FUNCS = ["sin","cos","tan","csc","sec","cot"];
+const gcd = (a,b) => b ? gcd(b, a % b) : Math.abs(a);
+
+// ---------- seeded RNG (mulberry32) ----------
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const randInt = (rng, n) => Math.floor(rng() * n);
+const choice = (rng, arr) => arr[randInt(rng, arr.length)];
+function shuffle(rng, arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(rng, i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+
+// ---------- exact values: {p,q,n} = (p/q)*sqrt(n); null = undefined ----------
+const V = (p,q,n) => ({p,q,n});
+const FIRST = { 0:[V(0,1,1),V(1,1,1)], 30:[V(1,2,1),V(1,2,3)], 45:[V(1,2,2),V(1,2,2)], 60:[V(1,2,3),V(1,2,1)], 90:[V(1,1,1),V(0,1,1)] };
+const scale = (v, s) => V(v.p * s, v.q, v.n);
+function sinCos(deg) {
+  const d = ((deg % 360) + 360) % 360;
+  let r, ss, cs;
+  if (d <= 90)       { r = FIRST[d];       ss = 1;  cs = 1; }
+  else if (d <= 180) { r = FIRST[180 - d]; ss = 1;  cs = -1; }
+  else if (d <= 270) { r = FIRST[d - 180]; ss = -1; cs = -1; }
+  else               { r = FIRST[360 - d]; ss = -1; cs = 1; }
+  return [scale(r[0], ss), scale(r[1], cs)];
+}
+function divide(a, b) {
+  if (b.p === 0) return null;
+  if (a.p === 0) return V(0,1,1);
+  let p = a.p * b.q, q = a.q * b.p * b.n, n = a.n * b.n;
+  const r = Math.round(Math.sqrt(n));
+  if (r * r === n) { p *= r; n = 1; }
+  if (q < 0) { p = -p; q = -q; }
+  const g = gcd(p, q); return V(p / g, q / g, n);
+}
+function trig(f, deg) {
+  const [s, c] = sinCos(deg), one = V(1,1,1);
+  return { sin:s, cos:c, tan:divide(s,c), cot:divide(c,s), sec:divide(one,c), csc:divide(one,s) }[f];
+}
+
+// ---------- HTML formatting ----------
+const frac = (n, d) => `<span class="frac"><span>${n}</span><span>${d}</span></span>`;
+function fmtValue(v) {
+  if (v === null) return "undefined";
+  if (v.p === 0) return "0";
+  const sign = v.p < 0 ? "−" : "";
+  const p = Math.abs(v.p), rad = v.n === 1 ? "" : "√" + v.n;
+  const num = (p === 1 && v.n > 1) ? rad : `${p}${rad}`;
+  return sign + (v.q === 1 ? num : frac(num, v.q));
+}
+function fmtAngle(deg, radians) {
+  if (!radians) return deg < 0 ? `−${-deg}°` : `${deg}°`;
+  if (deg === 0) return "0";
+  const g = gcd(Math.abs(deg), 180), n = Math.abs(deg) / g, d = 180 / g;
+  const sign = deg < 0 ? "−" : "";
+  const num = n === 1 ? "π" : `${n}π`;
+  return sign + (d === 1 ? num : frac(num, d));
+}
+
+// ---------- quiz generation ----------
+const special = (lo, hi) => { const out = []; for (let d = lo; d <= hi; d++) if (d % 30 === 0 || d % 45 === 0) out.push(d); return out; };
+function generate(rng, n, radPct, coPct, lo, hi) {
+  const nRad = Math.round(n * radPct / 100), nCo = Math.round(n * coPct / 100);
+  const base = special(0, 359);
+  const co = special(lo, hi).filter(d => d < 0 || d >= 360);
+  if (nCo > 0 && co.length === 0) throw new Error("No coterminal angles in that range.");
+  const funcs = [];
+  for (let i = 0; i < Math.floor(n / 6); i++) funcs.push(...FUNCS);
+  funcs.push(...shuffle(rng, FUNCS.slice()).slice(0, n % 6));
+  shuffle(rng, funcs);
+  const isCo = shuffle(rng, Array.from({length:n}, (_, i) => i < nCo));
+  const isRad = shuffle(rng, Array.from({length:n}, (_, i) => i < nRad));
+  const used = new Set(), qs = [];
+  for (let i = 0; i < n; i++) {
+    const pool = isCo[i] ? co : base; let d;
+    for (let t = 0; t < 200; t++) { d = choice(rng, pool); if (!used.has(funcs[i] + "|" + (((d % 360) + 360) % 360))) break; }
+    used.add(funcs[i] + "|" + (((d % 360) + 360) % 360));
+    qs.push({ f: funcs[i], deg: d, rad: isRad[i] });
+  }
+  return qs;
+}
+
+// ---------- rendering ----------
+function render(qs) {
+  const rows = Math.ceil(qs.length / 2);
+  const fs = rows > 12 ? Math.max(11, Math.round(17 * 12 / rows)) : 17;
+  const page = (title, answers) => `
+    <section class="page" style="--rows:${rows};--fs:${fs}px">
+      ${title ? `<h2>${title}</h2>` : ""}
+      <div class="qgrid">${qs.map((q, i) => `
+        <div class="q"><span class="n">${i + 1}.</span>
+          <span class="expr">${q.f}(${fmtAngle(q.deg, q.rad)})&nbsp;=</span>
+          ${answers ? `<span class="ans">${fmtValue(trig(q.f, q.deg))}</span>` : `<span class="line"></span>`}
+        </div>`).join("")}
+      </div>
+    </section>`;
+  document.getElementById("sheets").innerHTML = page("", false) + page("Answer Key", true);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+function syncHints() {
+  $("degShow").textContent = 100 - clamp(+$("rad").value || 0, 0, 100);
+  $("baseShow").textContent = 100 - clamp(+$("co").value || 0, 0, 100);
+}
+function run() {
+  $("err").textContent = "";
+  try {
+    const n = clamp(Math.round(+$("nq").value) || 20, 2, 40);
+    const radPct = clamp(+$("rad").value, 0, 100), coPct = clamp(+$("co").value, 0, 100);
+    const lo = Math.round(+$("lo").value), hi = Math.round(+$("hi").value);
+    if (!(lo < hi)) throw new Error("Lowest angle must be less than highest angle.");
+    const seedStr = $("seed").value.trim();
+    const seed = seedStr === "" ? Math.floor(Math.random() * 2 ** 32) : parseInt(seedStr, 10);
+    render(generate(makeRng(seed), n, radPct, coPct, lo, hi));
+  } catch (e) { $("err").textContent = e.message; }
+}
+["rad","co"].forEach(id => $(id).addEventListener("input", syncHints));
+$("gen").addEventListener("click", run);
+$("print").addEventListener("click", () => window.print());
+syncHints(); run();
+</script>
+</body>
+</html>
